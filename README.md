@@ -1,70 +1,131 @@
 # azure-ai-foundry-MAF-RAG-MCP-agent
 
 ## Overview
-The `azure-ai-foundry-MAF-RAG-MCP-agent` project demonstrates how to build a Modular Agent Framework (MAF) application that combines Retrieval Augmented Generation (RAG) with the Model Context Protocol (MCP) to expose tools, data sources, and system capabilities to AI agents orchestrated in Azure AI Foundry. It includes:
+The `azure-ai-foundry-MAF-RAG-MCP-agent` project demonstrates how to build a Modular Agent Framework (MAF) application that combines Retrieval Augmented Generation (RAG) with the Model Context Protocol (MCP) to expose tools, data sources, and system capabilities to AI agents orchestrated in Azure AI Foundry.
+
+It includes:
 - Integrated RAG pipeline (ingestion, indexing, retrieval, answer synthesis)
 - MCP server & inspector for tool/schema introspection
 - Azure AI Foundry agent configuration examples
 - Local development & deployment via Azure Functions (`func publish`)
 - Extensible plugin/tool architecture
+- Dual implementation patterns (Node.js & Python) where applicable
 
-## Architecture
-1. **Data Layer**: Documents ingested into a vector store (e.g., Azure AI Search or other embedding store).
-2. **Embeddings & Index**: Uses Azure OpenAI / Foundry embedding models for vectorization.
-3. **Retrieval**: Semantic + hybrid retrieval to supply context.
-4. **Agent Orchestration**: Azure AI Foundry agent configured with MCP tools.
-5. **MCP Server**: Exposes tools (search, retrieval, config inspection) and resources following the Model Context Protocol.
-6. **Answer Generation**: LLM synthesizes final answer with citations.
-7. **Deployment**: Packaged as Azure Functions or container.
+## Quick Start
+```bash
+# Clone
+git clone https://github.com/azure-data-ai-hub/azure-ai-foundry-MAF-RAG-MCP-agent.git
+cd azure-ai-foundry-MAF-RAG-MCP-agent
 
-## Features
-- Pluggable MCP tools (`/tools` directory)
-- Unified configuration file (`config/*.json` or `.env`)
-- Built-in RAG (chunking, embedding, retrieval)
-- MCP Inspector for debugging tool contracts
-- Observability hooks (logging, optional OpenTelemetry)
+# Copy env template and edit
+cp .env.example .env
+$EDITOR .env
 
-## Prerequisites
-- Azure Subscription
-- Azure AI Foundry workspace (or Azure OpenAI access)
-- Node.js (if MCP server implemented in TS/JS) or Python runtime (depending on implementation)
-- Azure Functions Core Tools (`npm i -g azure-functions-core-tools@4`) if using Functions
-- `git`, `curl`, `jq` (optional)
+# Install (Node variant)
+npm install
+# OR (Python variant)
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
 
-## Repository Structure (example)
-```text
-/README.md
-/src/                # Core agent & RAG logic
-/src/mcp/            # MCP server implementation & tool adapters
-/src/rag/            # Ingestion, chunking, embedding, retrieval logic
-/tools/              # Individual MCP tool definitions
-/config/             # JSON/YAML configuration templates
-/scripts/            # Helper scripts (ingest, reindex, diagnostics)
-/azure/              # Infra IaC (Bicep/Terraform) optional
-/function/           # Azure Functions entrypoints (if applicable)
-.env.example         # Environment variable template
+# Ingest sample docs
+bash scripts/ingest.sh data/*.pdf
+
+# Run dev MCP server
+npm run mcp:dev   # or: python src/mcp/server.py
 ```
 
-Adjust the paths above if your actual structure differs.
+## Architecture
+```text
+┌────────────────┐    ┌──────────────────┐    ┌────────────────────┐
+│  Source Docs   │ -> │ Chunk & Embedding │ -> │  Vector Index      │
+└────────────────┘    └──────────────────┘    └────────────────────┘
+         ↓                     ↑                         ↓
+   scripts/ingest         Embedding Model          Semantic / Hybrid
+         ↓                                            Retrieval (k)
+┌────────────────┐    ┌──────────────────┐    ┌────────────────────┐
+│ Azure AI Agent │ -> │ MCP Tools Layer  │ -> │ RAG Context Builder │
+└────────────────┘    └──────────────────┘    └────────────────────┘
+                               ↓
+                        LLM Answer Synth
+```
+1. Data Layer: Documents ingested into a vector store (Azure AI Search or alternative) via ingestion script.
+2. Embeddings: Generated using Azure OpenAI / Foundry deployments.
+3. Retrieval: Semantic + optional keyword/hybrid retrieval feeding top-k chunks.
+4. MCP Server: Exposes standardized tools for retrieval, search, config, health.
+5. Azure AI Foundry Agent: Orchestrates tool calls + system prompting.
+6. Answer Generation: LLM composes final response with citations.
+7. Deployment: Azure Functions / Container App / VM.
+
+## Repository Structure (illustrative)
+```text
+/README.md
+/src/
+  mcp/              # MCP server + tool registration
+  rag/              # RAG pipeline modules
+  utils/            # Shared helpers
+/tools/             # Discrete MCP tool definitions
+/config/            # JSON/YAML config sets
+/scripts/           # ingest.sh, reindex.sh, benchmark.sh
+/function/          # Azure Functions bindings (if used)
+/infra/             # Bicep/Terraform templates
+/tests/             # Unit + integration tests
+.env.example        # Environment template
+```
+
+## MCP Tool Manifest Example
+```json
+{
+  "version": "1.0.0",
+  "tools": [
+    {
+      "name": "search_documents",
+      "description": "Retrieve relevant document chunks via semantic vector search.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": { "type": "string" },
+          "k": { "type": "integer", "default": 6 }
+        },
+        "required": ["query"]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "chunk": { "type": "string" },
+                "score": { "type": "number" },
+                "sourceId": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}
+```
 
 ## Configuration
-You can supply configuration via environment variables or a JSON/YAML file.
-
-### Environment Variables
+### Environment Variables (minimal)
 ```bash
 AZURE_OPENAI_ENDPOINT=https://<your-endpoint>.openai.azure.com
 AZURE_OPENAI_API_KEY=********************************
-EMBEDDING_MODEL=text-embedding-3-large # example
-CHAT_MODEL=gpt-4o-mini                # example
-VECTOR_STORE_TYPE=azure-search        # or cosmos, chroma, pinecone
+AZURE_OPENAI_CHAT_DEPLOYMENT=gpt-4o-mini
+AZURE_OPENAI_EMBED_DEPLOYMENT=text-embedding-3-large
+VECTOR_STORE_TYPE=azure-search
 AZURE_SEARCH_ENDPOINT=https://<search>.search.windows.net
 AZURE_SEARCH_API_KEY=********************************
 AZURE_SEARCH_INDEX=rag-docs
 MAX_RETRIEVAL_RESULTS=8
 TEMPERATURE=0.2
+APPINSIGHTS_INSTRUMENTATIONKEY=<optional>
 ```
 
-### Config File (`config/default.json`)
+### JSON Config (`config/default.json`)
 ```json
 {
   "models": {
@@ -75,12 +136,21 @@ TEMPERATURE=0.2
     "provider": "azure-search",
     "index": "rag-docs",
     "k": 8,
+    "hybrid": true,
     "filters": {}
   },
   "chunking": {
     "strategy": "recursive",
     "maxTokens": 800,
     "overlap": 80
+  },
+  "rerank": {
+    "enabled": false,
+    "model": "text-embedding-3-large"
+  },
+  "cache": {
+    "enabled": true,
+    "ttlSeconds": 900
   },
   "logging": {
     "level": "info"
@@ -89,136 +159,149 @@ TEMPERATURE=0.2
 ```
 
 ### Secrets Management
-Use Azure Key Vault for production secrets and map them to environment variables through managed identity.
+Use Azure Key Vault + Managed Identity for production. Avoid committing secrets. For local dev use `.env` only.
 
-## RAG Workflow
-1. Ingest source documents: `scripts/ingest.sh` (or Python script) performs chunking + embedding.
-2. Store embeddings in Azure AI Search index.
-3. Query phase retrieves top-k vectors + optional keyword matches.
-4. Augment user prompt with retrieved context.
-5. LLM generates answer, including citations mapping back to document IDs.
+## Ingestion Workflow
+```bash
+# Example ingestion (PDF -> chunks -> embeddings -> index)
+INGEST_SOURCE=./data/whitepapers/*.pdf
+python scripts/ingest.py --source "$INGEST_SOURCE" \
+  --index "$AZURE_SEARCH_INDEX" \
+  --embedding-model "$AZURE_OPENAI_EMBED_DEPLOYMENT" \
+  --chunk-strategy recursive --chunk-size 800 --overlap 80
+```
+Steps:
+1. Read & normalize documents (PDF/HTML/MD).
+2. Split into semantic chunks.
+3. Generate embeddings.
+4. Upsert to vector index with metadata (sourceId, page, hash).
+
+## Retrieval Flow (Runtime)
+1. Agent receives user query.
+2. Calls `search_documents` (MCP tool) with query/k.
+3. (Optional) Calls `get_config` for dynamic parameters.
+4. Combines top-k chunks into context window (trimming by token budget).
+5. Calls chat model with system + user + context.
+6. Returns answer with citations mapping `sourceId`.
 
 ## MCP Server & Inspector
-The MCP server hosts: 
-- Tool metadata (names, input schema, output schema)
-- Resource endpoints (e.g., `/retrieve`, `/search`, `/config`)
-
-### Running MCP Server Locally
+Run locally:
 ```bash
-# Install dependencies
-npm install   # or pip install -r requirements.txt
-# Start server
-npm run mcp:dev  # example script
+npm run mcp:dev
+# or
+python src/mcp/server.py
 ```
-
-### MCP Inspector
-Use the MCP Inspector UI to connect to the server and visually explore available tools: parameters, schemas, and sample invocations.
-1. Launch MCP Inspector (locally or web).
-2. Point it to the MCP server endpoint (e.g., `http://localhost:4000`).
-3. Validate tool contracts.
-4. Invoke test calls (e.g., `search_documents`, `get_config`).
-
-This helps ensure Azure AI Foundry agents can correctly bind to tool specifications.
-
-## Azure AI Foundry Agent Integration
-In Azure AI Foundry, configure the agent: 
-- Add model deployment referencing `CHAT_MODEL`.
-- Register MCP tools by providing the server URL and tool schema manifest.
-- Configure memory & session parameters.
-- (Optional) Add system prompt engineering referencing available tools.
-
-### Sample System Prompt Snippet
-```text
-You are a retrieval-augmented assistant. Before answering, call the `search_documents` tool with relevant keywords. Use the `get_config` tool if you need dynamic thresholds. Cite sources using their `sourceId`.
-```
-
-## Local Development
-```bash
-# Clone
-git clone https://github.com/azure-data-ai-hub/azure-ai-foundry-MAF-RAG-MCP-agent.git
-cd azure-ai-foundry-MAF-RAG-MCP-agent
-
-# Setup environment
-cp .env.example .env
-# Edit .env with your keys
-
-# Install deps
-npm install   # or pip install -r requirements.txt
-
-# Run ingestion (example)
-bash scripts/ingest.sh data/whitepapers/*.pdf
-
-# Start dev server
-npm run dev
-```
+Use MCP Inspector GUI:
+1. Start Inspector.
+2. Enter server endpoint: `http://localhost:4000` (or function URL).
+3. Enumerate tools, validate schemas.
+4. Test invocation payloads before integrating into Azure AI Foundry.
 
 ## Azure Functions Deployment (`func publish`)
-If packaged as an Azure Function (HTTP trigger exposes MCP endpoints):
 ```bash
-# Login & set subscription
 az login
-az account set --subscription <SUBSCRIPTION_ID>
-
-# Create function app (Linux, consumption plan example)
+az account set --subscription <SUB_ID>
 az group create -n <rg-name> -l <region>
 az storage account create -n <storagename> -g <rg-name> -l <region> --sku Standard_LRS
 az functionapp create -n <func-app-name> -g <rg-name> --storage-account <storagename> --consumption-plan-location <region> --runtime node --functions-version 4
-
-# Publish
 func azure functionapp publish <func-app-name>
 ```
-After publish, update the MCP server endpoint in Azure AI Foundry agent config to the Function URL.
+Update agent configuration with published Function URL for MCP endpoint.
 
-## Observability & Logging
-- Enable Application Insights: set `APPINSIGHTS_INSTRUMENTATIONKEY` env var.
-- (Optional) OpenTelemetry exporter for traces on tool invocations.
+## Container Deployment (Alternative)
+```bash
+docker build -t maf-rag-mcp:latest .
+docker run -p 4000:4000 --env-file .env maf-rag-mcp:latest
+```
+Push to Azure Container Registry & deploy to Azure Container Apps if needed.
 
-## Testing
-- Unit tests: `npm test` or `pytest`
-- Integration (RAG): run retrieval tests verifying latency & accuracy.
-- Contract tests: Validate MCP tool JSON schema with inspector.
+## Observability & Metrics
+- Application Insights telemetry (requests, dependencies, traces)
+- Optional OpenTelemetry exporter for spans on tool calls
+- Latency SLO: < 2s retrieval, < 6s total response (adjust for model)
+
+## Performance Tuning
+| Area | Lever | Impact |
+|------|-------|--------|
+| Retrieval latency | Reduce k | Faster first token |
+| Context relevance | Enable rerank | Higher answer quality |
+| Token cost | Shorter chunks | Lower prompt size |
+| Cold start | Preload embeddings cache | Lower first request latency |
+| Index size | Periodic compaction | Stable performance |
+
+## Testing Strategy
+- Unit: chunking logic, embedding wrappers
+- Integration: end-to-end query -> answer -> citations
+- Contract: JSON schema of tools vs Inspector responses
+- Load: k6 or locust to simulate concurrent queries
 
 ## Security & Compliance
-- Use managed identity for Azure Search & Key Vault.
-- Avoid storing raw PII in logs.
-- Implement rate limiting if exposing public endpoints.
+- Principle of least privilege on Search index access
+- Managed Identity > static keys
+- Log scrubbing of PII & secrets
+- Rate limiting (Functions middleware or reverse proxy)
 
 ## Troubleshooting
 | Symptom | Cause | Resolution |
-|--------|-------|------------|
-| Empty retrieval results | Index not built | Re-run ingestion script |
-| 401 from Azure OpenAI | Invalid key or endpoint | Verify env vars / Key Vault references |
-| Tool not visible in Inspector | Server not started / CORS | Check logs, enable CORS headers |
-| High latency | Large k or slow embedding model | Reduce k, cache embeddings |
+|---------|-------|------------|
+| Empty results | Index stale or misconfigured | Re-run ingestion, verify index name |
+| 401 Azure OpenAI | Bad key / identity not assigned | Check Key Vault & identity roles |
+| Tool absent | Server not exporting manifest | Inspect server startup logs |
+| High latency | Oversized context / k too high | Reduce k or chunk size |
+| Memory errors | Large PDF ingestion | Stream & batch embeddings |
 
 ## Extending Tools
-Add new tool in `tools/` implementing MCP contract: 
+Example (TypeScript):
 ```ts
-export const newTool = {
+export const summarize_document = {
   name: 'summarize_document',
-  inputSchema: { type: 'object', properties: { docId: { type: 'string' } }, required: ['docId'] },
-  outputSchema: { type: 'object', properties: { summary: { type: 'string' } } },
-  execute: async (args, ctx) => { /* ... */ }
+  inputSchema: {
+    type: 'object',
+    properties: { docId: { type: 'string' } },
+    required: ['docId']
+  },
+  outputSchema: {
+    type: 'object',
+    properties: { summary: { type: 'string' }, sourceId: { type: 'string' } }
+  },
+  execute: async (args, ctx) => {
+    const doc = await ctx.store.get(args.docId);
+    const summary = await ctx.llm.summarize(doc.text);
+    return { summary, sourceId: args.docId };
+  }
 };
 ```
-Register it in the server bootstrap and redeploy.
+Register new tool in server bootstrap and redeploy / republish.
+
+## Sample System Prompt (Extended)
+```text
+You are a retrieval-augmented assistant. For each user query: 1) Call search_documents unless the query is purely conversational. 2) Use get_config to adjust retrieval k if query complexity is high. 3) Cite sources using [sourceId]. If you cannot retrieve relevant context, ask clarifying questions.
+```
 
 ## Roadmap
 - Vector store abstraction improvements
 - Advanced re-ranking (Reciprocal Rank Fusion)
 - Caching layer for frequent queries
 - Streaming responses
+- Multi-tenant workspace support
+- Metadata filters (date range, taxonomy)
 
 ## Contributing
 Pull requests welcome. Please open an issue to discuss major changes first.
+1. Fork
+2. Branch (`feat/<name>`)
+3. Commit (Conventional Commits)
+4. PR + link related issues
+5. Review + merge
 
-1. Fork repo
-2. Create feature branch
-3. Commit with conventional messages
-4. Open PR
+## FAQ
+**Q: Why MCP?** Standardizes tool interfaces enabling plug & play agent orchestration.
+**Q: Can I swap vector store?** Yes; implement provider adapter & map to retrieval tool.
+**Q: How big should chunks be?** 500-1000 tokens typical; adjust for model context window.
+**Q: Support streaming?** Planned via server-sent events upgrade.
 
 ## License
-Specify your license here (e.g., MIT).
+MIT
 
 ## Disclaimer
-This README may contain placeholders (model names, endpoints). Replace them with your actual configuration before production use.
+Replace placeholders (model names, endpoints, indices) with production values. Review security recommendations before external exposure.
