@@ -12,6 +12,9 @@
     "AZURE_SEARCH_INDEX_NAME": "lumen_contracts_index",
     "AZURE_SEARCH_SEMANTIC_CONFIG": "default",
     "AZURE_SEARCH_CONTENT_FIELD": "content",
-    "AZURE_SEARCH_TOP_K": "3"
+    "AZURE_SEARCH_TOP_K": "3",
+    "MCP_SERVER_URL": "https://auzremcpagentrm.azurewebsites.net/runtime/webhooks/mcp",
+    "MCP_SERVER_LABEL": "azure_mcp_function",
+    "MCP_EXTENSION_KEY": "<MCP_EXTENSION_KEY>"
   }
 }

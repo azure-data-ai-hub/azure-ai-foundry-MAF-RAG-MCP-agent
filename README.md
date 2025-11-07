@@ -10,7 +10,7 @@ Serverless Python Azure Function app that exposes MCP tools and HTTP endpoints p
 - **Managed identities first**: Uses `DefaultAzureCredential`, so it works with Azure CLI auth locally and Managed Identity in Azure.
 
 ## Requirements
-- [Python 3.10+](https://www.python.org/downloads/)
+- [Python 3.13](https://www.python.org/downloads/)
 - [Azure Functions Core Tools v4](https://learn.microsoft.com/azure/azure-functions/functions-run-local#v2)
 - [Visual Studio Code](https://code.visualstudio.com/Download)
 - VS Code extensions:
