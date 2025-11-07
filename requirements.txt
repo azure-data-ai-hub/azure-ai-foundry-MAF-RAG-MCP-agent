@@ -6,3 +6,4 @@ azure-functions>=1.24.0
 azure-ai-projects
 azure-identity
 agent-framework
+azure-search-documents>=11.6.0
