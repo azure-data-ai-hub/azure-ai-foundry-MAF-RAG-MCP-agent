@@ -2,6 +2,78 @@
 
 Serverless Python Azure Function app that exposes MCP tools and HTTP endpoints powered by the Microsoft Agentic Framework (MAF) and Azure AI Search for retrieval-augmented generation (RAG).
 
+## Architecture
+
+The diagram below shows the end-to-end flow of the MAF RAG MCP Agent: a user request travels through the Azure Functions host to the MAF agent runtime, which dispatches tool calls via the MCP protocol. Tools either invoke the LLM directly or perform retrieval-augmented generation (RAG) against Azure AI Search before calling Azure OpenAI. Telemetry is emitted throughout for observability.
+
+```mermaid
+flowchart TD
+    User(["👤 End User / Client"])
+
+    subgraph AzureFunc ["Azure Functions Host"]
+        HTTP["HTTP Trigger\n(rag-query / contract-analysis)"]
+        MCP_EP["MCP Endpoint\n(getTagLine / getContractAnalysis)"]
+    end
+
+    subgraph Agent ["MAF Agent Runtime"]
+        MAF["Microsoft Agentic Framework\n(Agent Orchestrator)"]
+        ToolRouter["MCP Client /\nTool Router"]
+    end
+
+    subgraph MCPTools ["MCP Tools"]
+        T1["getTagLine Tool"]
+        T2["getContractAnalysis Tool"]
+    end
+
+    subgraph RAG ["RAG Pipeline"]
+        Embed["Embeddings\n(Azure OpenAI)"]
+        VecIdx["Vector / Semantic Index\n(Azure AI Search)"]
+        DocStore["Document Store\n(Search Index Documents)"]
+    end
+
+    subgraph AzureAI ["Azure AI / OpenAI"]
+        LLM["LLM\n(Azure OpenAI GPT deployment)"]
+    end
+
+    Obs[("📊 Observability\n(Azure Functions Logs /\nApp Insights traces)")]
+
+    %% Request path
+    User -->|HTTP request| HTTP
+    User -->|MCP call| MCP_EP
+    HTTP --> MAF
+    MCP_EP --> MAF
+    MAF --> ToolRouter
+    ToolRouter --> T1
+    ToolRouter --> T2
+
+    %% RAG path
+    T2 -->|semantic search query| Embed
+    Embed -->|vector query| VecIdx
+    VecIdx <-->|retrieve chunks| DocStore
+    VecIdx -->|top-k passages| T2
+
+    %% LLM invocation
+    T1 -->|prompt + context| LLM
+    T2 -->|prompt + passages| LLM
+    LLM -->|generated response| MAF
+
+    %% Response back
+    MAF -->|result| HTTP
+    MAF -->|tool result| MCP_EP
+    HTTP -->|HTTP response| User
+    MCP_EP -->|MCP response| User
+
+    %% Observability
+    MAF -.->|logs / traces| Obs
+    LLM -.->|token usage| Obs
+```
+
+**Legend**
+
+- **MAF** – Microsoft Agentic Framework; the orchestration layer that manages agent lifecycle and tool dispatching.
+- **RAG** – Retrieval-Augmented Generation; the pattern of fetching relevant documents from a search index and supplying them as context to the LLM before generation.
+- **MCP** – Model Context Protocol; the open protocol used to expose and invoke tools between the agent and its tool servers.
+
 ## Features
 - **MAF-powered MCP tools**: `getTagLine` and `getContractAnalysis` tools execute through Azure AI Projects/Agentic Framework.
 - **HTTP APIs**:
