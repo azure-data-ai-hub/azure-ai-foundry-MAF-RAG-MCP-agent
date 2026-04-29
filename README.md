@@ -2,6 +2,34 @@
 
 Serverless Python Azure Function app that exposes MCP tools and HTTP endpoints powered by the Microsoft Agentic Framework (MAF) and Azure AI Search for retrieval-augmented generation (RAG).
 
+## Architecture
+
+The diagram below shows the end-to-end reference architecture. Users interact with **M365 Copilot**, which is configured by a **Copilot Admin** through **Copilot Studio** to surface the **Agent**. The Agent communicates with the **API** layer over MCP/HTTP, which in turn calls **Azure AI Foundry** (AI Agents / AOAI / GPT-4o) for reasoning and generation. The API also issues search queries directly to **Azure AI Search**. Source files originating from M365 Copilot are stored as **Content**, which is indexed into Azure AI Search. AI Foundry drives the vectorization pipeline that populates the search index, enabling retrieval-augmented generation (RAG).
+
+```mermaid
+flowchart LR
+    Users(["Users"])
+    CopilotAdmin(["Copilot Admin"])
+    M365["M365 Copilot"]
+    CopilotStudio["Copilot Studio"]
+    Agent["Agent"]
+    API["API"]
+    AIFoundry["AI Foundry\n(AI Agents / AOAI / GPT-4o)"]
+    AISearch["Azure AI Search"]
+    Content["Content"]
+
+    Users --> M365
+    CopilotAdmin <--> CopilotStudio
+    CopilotStudio --> Agent
+    M365 <--> Agent
+    Agent <-->|"MCP/HTTP"| API
+    API <--> AIFoundry
+    API -->|"Search Query"| AISearch
+    Content -->|"Index"| AISearch
+    M365 -->|"Source File"| Content
+    AIFoundry -->|"Vectorization"| AISearch
+```
+
 ## Features
 - **MAF-powered MCP tools**: `getTagLine` and `getContractAnalysis` tools execute through Azure AI Projects/Agentic Framework.
 - **HTTP APIs**:
